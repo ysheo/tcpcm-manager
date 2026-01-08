@@ -1,0 +1,17 @@
+export default {
+  plant_title: "공장/지역 관리",
+  plant_tab_region: "지역 (Region)",
+  plant_tab_plant: "공장 (Plant)",
+  plant_upload: "엑셀 업로드",
+  plant_download: "엑셀 다운로드",
+  plant_save_db: "DB에 저장하기",
+  plant_header_no: "No.",
+  plant_header_region: "지역 코드",
+  plant_header_key: "키 (Key)",
+  plant_header_ko: "국문명",
+  plant_header_en: "영문명",
+  plant_msg_uploading: "현재 {tab} 데이터를 업로드 중입니다.",
+  plant_sheet_select: "시트 선택:",
+  plant_msg_valid_region: "존재하지 않는 지역 코드가 포함되어 있습니다",
+  plant_filter_all: "모든 지역 보기",
+};

@@ -1,0 +1,17 @@
+export default {
+  menu_home: "Home",
+  menu_cost: "Cost Analytics",
+  menu_explorer: "Explorer (Legacy)",
+  menu_dashboard: "Dashboard (Web)",
+  menu_master: "Master Data",
+  menu_plant: "Plant/Region",
+  menu_material: "Material Mgmt",
+  menu_machine: "Machine Mgmt",
+  menu_labor: "Labor Rates",
+  menu_overhead: "Overheads",
+  menu_factor: "Cost Factor",
+  menu_exchange: "Exchange Rates",
+  menu_system: "System Settings",
+  menu_user: "User Management",
+  menu_config: "Configuration",
+};

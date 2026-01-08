@@ -1,0 +1,17 @@
+export default {
+  menu_home: "홈",
+  menu_cost: "원가 분석",
+  menu_explorer: "탐색기 (Legacy)",
+  menu_dashboard: "대시보드 (Web)",
+  menu_master: "기준 정보",
+  menu_plant: "공장/지역 (Plant)",
+  menu_material: "재료 관리 (Material)",
+  menu_machine: "기계 관리 (Machine)",
+  menu_labor: "임율 관리 (Labor)",
+  menu_overhead: "간접비 (Overhead)",
+  menu_factor: "Cost Factor",
+  menu_exchange: "환율 관리",
+  menu_system: "시스템 설정",
+  menu_user: "사용자 관리",
+  menu_config: "Configuration",
+};

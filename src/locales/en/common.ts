@@ -1,0 +1,17 @@
+export default {
+  confirm: "Confirm",
+  cancel: "Cancel",
+  save: "Save",
+  delete: "Delete",
+  add: "Add",
+  edit: "Edit",
+  close: "Close",
+  search: "Search",
+  loading: "Loading...",
+  refresh: "Refresh",
+  logout: "Logout",
+  no_data: "No data available.",
+  all: "All",
+  home: "Home",
+  lang_select: "Language",
+};

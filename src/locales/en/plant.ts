@@ -1,0 +1,17 @@
+export default {
+  plant_title: "Plant/Region Mgmt",
+  plant_tab_region: "Region",
+  plant_tab_plant: "Plant",
+  plant_upload: "Upload Excel",
+  plant_download: "Download Excel",
+  plant_save_db: "Save to DB",
+  plant_header_no: "No.",
+  plant_header_region: "Region Code",
+  plant_header_key: "Key",
+  plant_header_ko: "Name (KR)",
+  plant_header_en: "Name (EN)",
+  plant_msg_uploading: "Uploading {tab} data.",
+  plant_sheet_select: "Select Sheet:",
+  plant_msg_valid_region: "Invalid region codes detected",
+  plant_filter_all: "View All Regions",
+};

@@ -1,0 +1,17 @@
+export default {
+  confirm: "확인",
+  cancel: "취소",
+  save: "저장",
+  delete: "삭제",
+  add: "추가",
+  edit: "수정",
+  close: "닫기",
+  search: "검색",
+  loading: "로딩 중...",
+  refresh: "새로고침",
+  logout: "로그아웃",
+  no_data: "데이터가 없습니다.",
+  all: "전체",
+  home: "Home",
+  lang_select: "언어 선택",
+};
