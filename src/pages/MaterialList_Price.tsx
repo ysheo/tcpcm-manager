@@ -9,8 +9,7 @@ import SearchableSelect from '../components/common/SearchableSelect';   // ★ �
 interface FilterOption {
     id?: string;
     uniqueKey: string;
-    nameEn: string;
-    nameKo: string;
+    name: string;
 }
 
 const MaterialList_Price = () => {
@@ -45,21 +44,21 @@ const MaterialList_Price = () => {
     // 1. 초기 옵션 로드
     useEffect(() => {
         const fetchOptions = async () => {
-            const [resR, resC] = await MaterialPriceService.getOptions();
+            const [resR, resC] = await MaterialPriceService.getOptions(language);
 
             if (resR.success) {
                 setRegionOptions(resR.data.map((i: any) => ({
-                    uniqueKey: i.UniqueKey, nameEn: i.NameEn, nameKo: i.NameKo
+                    uniqueKey: i.UniqueKey, name: i.Name
                 })));
             }
             if (resC.success) {
                 setClassOptions(resC.data.map((i: any) => ({
-                    uniqueKey: i.UniqueKey, nameEn: i.NameEn, nameKo: i.NameKo
+                    uniqueKey: i.UniqueKey, name: i.Name
                 })));
             }
         };
         fetchOptions();
-    }, []);
+    }, [language]);
 
     // 2. 데이터 조회
     const fetchData = async (page: number) => {
@@ -70,7 +69,7 @@ const MaterialList_Price = () => {
                 isAllPeriod, startDate, endDate, includeReference
             };
 
-            const [countRes, dataRes] = await MaterialPriceService.getList(page, itemsPerPage, filters);
+            const [countRes, dataRes] = await MaterialPriceService.getList(page, itemsPerPage, filters, language);
 
             if (countRes.success) setTotalItems(countRes.data[0].total);
             if (dataRes.success) setData(dataRes.data);
@@ -99,12 +98,7 @@ const MaterialList_Price = () => {
 
     // --- Helper UI Functions ---
     const getOptionLabel = (opt: FilterOption) => {
-        const target = language === 'ko' ? opt.nameKo : opt.nameEn;
-        return target || opt.nameEn || opt.nameKo || opt.uniqueKey;
-    };
-
-    const getDisplayName = (row: any) => {
-        return language === 'ko' ? (row.nameKo || row.nameEn) : (row.nameEn || row.nameKo);
+        return opt.name || opt.uniqueKey;
     };
 
     return (
@@ -211,7 +205,7 @@ const MaterialList_Price = () => {
                                         <td className="px-6 py-4 text-gray-600 font-semibold">{row.validFrom}</td>
                                         <td className="px-6 py-4"><span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-100">{row.region}</span></td>
                                         <td className="px-6 py-4 font-mono text-gray-500">{row.uniqueKey}</td>
-                                        <td className="px-6 py-4 font-bold text-gray-800">{getDisplayName(row)}</td>
+                                        <td className="px-6 py-4 font-bold text-gray-800">{row.name}</td>
                                         <td className="px-6 py-4"><span className="text-[11px] text-gray-400 font-mono bg-gray-100 px-1.5 py-0.5 rounded">{row.revisionName}</span></td>
                                         <td className="px-6 py-4">{row.currency}</td>
                                         <td className="px-6 py-4">{row.unit}</td>

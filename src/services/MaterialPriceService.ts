@@ -1,5 +1,6 @@
 import { api } from './ApiService';
 import { AppConfig } from '../config/AppConfig';
+import { getNameSql } from '../utils/SqlHelper'; // ★ 방금 만든 파일 Import
 
 // SQL WHERE절 빌더
 const buildWhereClause = (filters: any) => {
@@ -23,19 +24,17 @@ const buildWhereClause = (filters: any) => {
 
 export const MaterialPriceService = {
     // 1. 옵션 조회 (지역, 분류)
-    getOptions: async () => {
+    getOptions: async (lang: string) => {
         const qRegion = `
-            SELECT DISTINCT reg.UniqueKey,
-                [dbo].[GetSingleTranslation](reg.Name_LOC, N'en-US', '') AS NameEn,
-                [dbo].[GetSingleTranslation](reg.Name_LOC, N'ko-KR', '') AS NameKo
+            SELECT DISTINCT reg.UniqueKey
+                , ${getNameSql('reg.Name_LOC', lang)} AS Name
             FROM [${AppConfig.DB.PCM}].[dbo].[MDMaterialDetails] d
             JOIN [${AppConfig.DB.PCM}].[dbo].[BDRegions] reg ON d.RegionId = reg.Id
             WHERE d.Obsolete IS NULL ORDER BY reg.UniqueKey
         `;
         const qClass = `
             SELECT c.UniqueKey,
-                [dbo].[GetSingleTranslation](c.Name_LOC, N'en-US', '') AS NameEn,
-                [dbo].[GetSingleTranslation](c.Name_LOC, N'ko-KR', '') AS NameKo
+                 ${getNameSql('c.Name_LOC', lang)} AS Name
             FROM [${AppConfig.DB.PCM}].[dbo].[Classifications] c
             WHERE c.UniqueKey NOT LIKE '%Scrap%'
             AND EXISTS (
@@ -51,7 +50,7 @@ export const MaterialPriceService = {
     },
 
     // 2. 리스트 조회 (카운트 + 페이징)
-    getList: async (page: number, itemsPerPage: number, filters: any) => {
+    getList: async (page: number, itemsPerPage: number, filters: any, lang: string) => {
         const where = buildWhereClause(filters);
         const needHeaderJoin = !!filters.searchText;
 
@@ -85,8 +84,7 @@ export const MaterialPriceService = {
                  d.Id AS id
                 ,h.UniqueKey AS uniqueKey
                 ,r.Number AS revisionName
-                ,[dbo].[GetSingleTranslation](h.Name_LOC, N'ko-KR', '') AS nameKo
-                ,[dbo].[GetSingleTranslation](h.Name_LOC, N'en-US', '') AS nameEn
+                ,${getNameSql('h.Name_LOC', lang)} AS name
                 ,FORMAT(d.DateValidFrom, 'yyyy-MM-dd') AS validFrom
                 ,ISNULL(reg.UniqueKey, '') AS region
                 ,ISNULL(c.IsoCode, '') AS currency
@@ -121,7 +119,7 @@ export const MaterialPriceService = {
     },
 
     // 3. 엑셀 다운로드용 전체 데이터
-    getExcelData: async (filters: any) => {
+    getExcelData: async (filters: any, lang: string) => {
         const where = buildWhereClause(filters);
 
         // *참고: 엑셀 다운로드 시 ScrapPrice 계산은 성능 이슈로 0 처리하거나, 
@@ -132,8 +130,7 @@ export const MaterialPriceService = {
                 ,ISNULL(reg.UniqueKey, '') AS region
                 ,h.UniqueKey AS uniqueKey
                 ,r.Number AS revisionName
-                ,[dbo].[GetSingleTranslation](h.Name_LOC, N'ko-KR', '') AS nameKo
-                ,[dbo].[GetSingleTranslation](h.Name_LOC, N'en-US', '') AS nameEn
+                , ${getNameSql('h.Name_LOC', lang)} AS Name
                 ,c.IsoCode AS currency
                 ,u.Name AS unit
                 ,d.Price AS price

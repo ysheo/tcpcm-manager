@@ -7,10 +7,8 @@ import {
 interface FilterOption {
     id?: string;
     uniqueKey: string;
-    nameEn: string;
-    nameKo: string;
+    name: string;
 }
-
 
 
 // ★ [신규 컴포넌트] 검색 가능한 셀렉트 박스 (파일 하단에 두거나 내부에 정의)

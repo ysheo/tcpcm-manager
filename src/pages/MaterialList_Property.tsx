@@ -12,13 +12,11 @@ import SearchableSelect from '../components/common/SearchableSelect';   // 공�
 interface FilterOption {
     id: string;
     uniqueKey: string;
-    nameEn: string;
-    nameKo: string;
+    name: string;
 }
 
 const MaterialList_Property = () => {
     const { t, language } = useLanguage();
-
     // --- State ---
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any[]>([]);
@@ -28,9 +26,10 @@ const MaterialList_Property = () => {
     // 필터
     const [searchText, setSearchText] = useState('');
     const [filterClass, setFilterClass] = useState('');
+    const [filterMaterialType, setFilterMaterialType] = useState('');
     const [includeReference, setIncludeReference] = useState(false);
     const [classOptions, setClassOptions] = useState<FilterOption[]>([]);
-
+    const [materialTypeOptions, setMaterialTypeOptions] = useState<FilterOption[]>([]);
     // 페이지네이션
     const [totalItems, setTotalItems] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
@@ -44,24 +43,24 @@ const MaterialList_Property = () => {
     // 1. 초기 로드 (Service 사용)
     useEffect(() => {
         const fetchOptions = async () => {
-            const res = await MaterialService.getClassOptions();
-            if (res.success) {
-                setClassOptions(res.data.map((i: any) => ({
-                    id: i.Id, uniqueKey: i.UniqueKey, nameEn: i.NameEn, nameKo: i.NameKo
+            const res2 = await MaterialService.getMaterialType(language);
+            if (res2.success) {
+                setMaterialTypeOptions(res2.data.map((i: any) => ({
+                    id: i.Id, uniqueKey: i.UniqueKey, name: i.Name
                 })));
             }
+
+            const res = await MaterialService.getClassOptions(language);
+            if (res.success) {
+                setClassOptions(res.data.map((i: any) => ({
+                    id: i.Id, uniqueKey: i.UniqueKey, name: i.Name
+                })));
+            }
+
+
         };
         fetchOptions();
-    }, []);
-
-    // [Helper] 라벨 표시 함수
-    const getOptionLabel = (option: FilterOption) => {
-        const targetName = language === 'ko' ? option.nameKo : option.nameEn;
-        if (targetName && targetName.trim() !== '') return targetName;
-        if (option.nameEn && option.nameEn.trim() !== '') return option.nameEn;
-        if (option.nameKo && option.nameKo.trim() !== '') return option.nameKo;
-        return option.uniqueKey;
-    };
+    }, [language]);
 
     useEffect(() => {
         const timer = setTimeout(() => fetchData(currentPage), 300);
@@ -71,7 +70,7 @@ const MaterialList_Property = () => {
 
     // 엑셀 버튼 핸들러
     const handleExcelClick = () => {
-        excel.prepareData({ text: searchText, classKey: filterClass, includeRef: includeReference });
+        excel.prepareData({ text: searchText, classKey: filterClass, includeRef: includeReference, materialType: filterMaterialType });
     };
 
     const handlePageInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -80,6 +79,8 @@ const MaterialList_Property = () => {
             if (!isNaN(p) && p > 0 && p <= Math.ceil(totalItems / itemsPerPage)) setCurrentPage(p);
         }
     };
+
+
     const fetchData = async (page: number) => {
         // 분류 선택 안 해도 데이터가 있으면 조회되도록 (필터링 조건에 따라)
         // 만약 분류 필수라면 if (!filterClass) return; 유지
@@ -88,7 +89,7 @@ const MaterialList_Property = () => {
         console.time("🚀 Load Prop Data");
 
         try {
-            const currentSearchKey = `PROP-${searchText}-${filterClass}-${includeReference}`;
+            const currentSearchKey = `PROP-${searchText}-${filterClass}-${filterMaterialType}-${includeReference}`;
 
             // --- 1. 기본 WHERE 조건 ---
             let baseWhere = `WHERE s.Obsolete IS NULL`;
@@ -98,15 +99,29 @@ const MaterialList_Property = () => {
                 baseWhere += ` AND (s.UniqueKey LIKE N'%${searchText}%' OR std_n.Name_LOC LIKE N'%${searchText}%')`;
             }
 
+            if (filterMaterialType) {
+                baseWhere += `
+                    AND EXISTS (
+                        SELECT 1 
+                        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstancePropertyValues] pv
+                        WHERE pv.SubstanceId = s.Id 
+                          AND pv.ClassificationPropertyId = 28 
+                          AND pv.ListItemValues = N'${filterMaterialType}'
+                    )
+                `;
+            }
+
             // --- 2. 카운트 쿼리 (기존과 동일) ---
             if (lastSearchRef.current !== currentSearchKey) {
                 const countQuery = `
-                SELECT COUNT(*) as total
-                FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
-                LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-                LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
-                ${baseWhere}
-            `;
+                        -- ★ [수정] COUNT(*) 대신 COUNT(DISTINCT s.Id) 사용
+                        -- 조인 때문에 늘어난 줄 수(규격 이름 개수)를 무시하고, 실제 재료 개수만 셉니다.
+                        SELECT COUNT(DISTINCT s.Id) as total
+                        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
+                        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
+                        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
+                        ${baseWhere}
+                    `;
                 const res = await api.executeQuery(countQuery, AppConfig.DB.PCM);
                 if (res.success) {
                     setTotalItems(res.data[0].total);
@@ -116,31 +131,29 @@ const MaterialList_Property = () => {
 
             // --- 3. 물질 목록(Row) 조회 ---
             const rowQuery = `
-            WITH PagedRows AS (
-                SELECT s.Id
-                FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
-                LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-                LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
-                ${baseWhere}
-                ORDER BY s.UniqueKey ASC
-                OFFSET ${(page - 1) * itemsPerPage} ROWS FETCH NEXT ${itemsPerPage} ROWS ONLY
-            )
-            SELECT 
-                 s.Id AS SubstanceId
-                ,s.UniqueKey
-                ,s.Density
-                ,u.Name AS DensityUnit
-                ,[dbo].[GetSingleTranslation](std_n.Name_LOC, N'ko-KR', '') AS StandardName
-                ,[dbo].[GetSingleTranslation](std_b.Name_LOC, N'ko-KR', '') AS StandardType
-            FROM PagedRows p
-            JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s ON p.Id = s.Id
-            LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-            LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Units] u ON s.DensityUnitId = u.Id
-            LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
-            LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[BDSubstanceStandards] std_b ON std_n.SubstanceStandardId = std_b.Id
-            ORDER BY s.UniqueKey ASC
-        `;
+    WITH PagedRows AS (
+        SELECT s.Id
+        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
+        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
+        ${baseWhere}
+        ORDER BY s.UniqueKey ASC
+        OFFSET ${(page - 1) * itemsPerPage} ROWS FETCH NEXT ${itemsPerPage} ROWS ONLY
+    )
+    SELECT 
+    distinct
+        s.Id AS SubstanceId
+        ,s.UniqueKey
+        ,s.Density
+        ,u.Name AS DensityUnit       
 
+    FROM PagedRows p
+    JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s ON p.Id = s.Id
+    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
+    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Units] u ON s.DensityUnitId = u.Id
+    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
+    ORDER BY s.UniqueKey ASC
+`;
+            console.log(rowQuery);
             const rowRes = await api.executeQuery(rowQuery, AppConfig.DB.PCM);
 
             if (rowRes.success && rowRes.data.length > 0) {
@@ -150,24 +163,13 @@ const MaterialList_Property = () => {
                 // --- 4. 값(Value) + 헤더 정보(Meta) 동시 조회 ---
                 const ids = rows.map((r: any) => `'${r.SubstanceId}'`).join(',');
 
+
+
                 if (ids) {
                     // 값을 가져올 때 [물성 이름]과 [단위]도 같이 JOIN해서 가져옵니다.
-                    const valueQuery = `
-                    SELECT 
-                         v.SubstanceId
-                        ,v.ClassificationPropertyId AS PropertyId
-                        ,COALESCE(CAST(v.DecimalValue AS NVARCHAR(50)), v.TextValue, v.ListItemValues, FORMAT(v.DateTimeValue, 'yyyy-MM-dd')) AS Value
-                        -- 헤더 생성을 위한 정보 추가
-                        ,[dbo].[GetSingleTranslation](cp.Name_LOC, N'${language === 'ko' ? 'ko-KR' : 'en-US'}', '') AS PropertyName
-                        ,u.Name AS UnitName
-                    FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstancePropertyValues] v
-                    JOIN [${AppConfig.DB.PCM}].[dbo].[ClassificationProperties] cp ON v.ClassificationPropertyId = cp.Id
-                    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Units] u ON cp.UnitId = u.Id
-                    WHERE v.SubstanceId IN (${ids})
-                `;
 
-                    const valRes = await api.executeQuery(valueQuery, AppConfig.DB.PCM);
-
+                    //console.log(valueQuery);
+                    const valRes = await MaterialService.getPropertyValues(ids, language);
                     if (valRes.success) {
                         const valMap: Record<string, any> = {};
                         const headersMap = new Map(); // 중복 제거를 위해 Map 사용
@@ -189,9 +191,20 @@ const MaterialList_Property = () => {
                         setPropValues(valMap);
 
                         // Map을 배열로 변환하고 이름순 정렬 (안 하면 뒤죽박죽 섞임)
-                        const sortedHeaders = Array.from(headersMap.values()).sort((a: any, b: any) =>
-                            a.DisplayName.localeCompare(b.DisplayName)
-                        );
+                        const sortedHeaders = Array.from(headersMap.values()).sort((a: any, b: any) => {
+                            // ID가 'STD_'로 시작하는지 확인 (규격인지 물성인지 판별)
+                            const isAStd = String(a.PropertyId).startsWith('STD_');
+                            const isBStd = String(b.PropertyId).startsWith('STD_');
+
+                            // [우선순위 1] 둘 중 하나만 규격(STD)이면, 규격을 앞으로(-1) 보냄
+                            if (isAStd && !isBStd) return -1;
+                            if (!isAStd && isBStd) return 1;
+
+                            // [우선순위 2] 둘 다 규격이거나, 둘 다 물성이면 -> 이름(DisplayName) 가나다순 정렬
+                            // (에러 방지용 빈 문자열 처리 포함)
+                            return (a.DisplayName || '').localeCompare(b.DisplayName || '');
+                        });
+
                         setDynamicHeaders(sortedHeaders);
                     }
                 } else {
@@ -215,19 +228,30 @@ const MaterialList_Property = () => {
     return (
         <>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
                     {/* Select Box (공통 컴포넌트 사용) */}
                     <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Classification (Required)</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Material Type</span>
+                        <SearchableSelect
+                            options={materialTypeOptions}
+                            value={filterMaterialType}
+                            onChange={setFilterMaterialType}
+                            getLabel={(opt) => opt.name}
+                            placeholder="Type to search..."
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Classification</span>
                         <SearchableSelect
                             options={classOptions}
                             value={filterClass}
                             onChange={setFilterClass}
-                            getLabel={(opt) => language === 'ko' ? opt.nameKo || opt.nameEn : opt.nameEn || opt.nameKo}
+                            getLabel={(opt) => opt.name}
                             placeholder="Type to search..."
                         />
                     </div>
-                    <div></div>
+
                     {/* Search Input */}
                     <div className="flex flex-col gap-1">
                         <div className="flex justify-between items-center px-1">
@@ -270,7 +294,6 @@ const MaterialList_Property = () => {
                             <tr>
                                 <th className="px-6 py-4 text-center w-14 bg-gray-50/90 sticky left-0 z-20">No</th>
                                 <th className="px-6 py-4 min-w-[120px] bg-gray-50/90 sticky left-14 z-20 border-r border-gray-100">{t('plant_header_key')}</th>
-                                <th className="px-6 py-4 min-w-[150px]">Standard Name</th>
                                 <th className="px-6 py-4 text-right">Density</th>
                                 {dynamicHeaders.map(h => (
                                     <th key={h.PropertyId} className="px-6 py-4 text-right whitespace-nowrap bg-teal-50/30 text-teal-800 border-l border-dashed border-teal-100">
@@ -284,9 +307,8 @@ const MaterialList_Property = () => {
                                 data.length === 0 ? <tr><td colSpan={5 + dynamicHeaders.length} className="text-center py-20">{t('no_data')}</td></tr> :
                                     data.map((row, idx) => (
                                         <tr key={idx} className="hover:bg-teal-50/40 group">
-                                            <td className="px-6 py-4 text-center text-gray-400 text-xs bg-white group-hover:bg-teal-50/40 sticky left-0 z-10">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
-                                            <td className="px-6 py-4 font-mono text-gray-500 font-bold bg-white group-hover:bg-teal-50/40 sticky left-14 z-10 border-r border-gray-100">{row.UniqueKey}</td>
-                                            <td className="px-6 py-4"><div className="flex flex-col"><span className="text-gray-800 font-medium">{row.StandardName || '-'}</span><span className="text-[10px] text-gray-400">{row.StandardType}</span></div></td>
+                                            <td className="px-6 py-4 text-center text-gray-400 text-xs bg-white group-hover:bg-teal-50/40 left-0 z-10">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
+                                            <td className="px-6 py-4 font-mono text-gray-500 font-bold bg-white group-hover:bg-teal-50/40 left-14 z-10 border-r border-gray-100">{row.UniqueKey}</td>
                                             <td className="px-6 py-4 text-right font-mono text-gray-600">{row.Density} <span className="text-[9px] text-gray-400">{row.DensityUnit}</span></td>
                                             {dynamicHeaders.map(h => {
                                                 const valKey = `${row.SubstanceId}_${h.PropertyId}`;

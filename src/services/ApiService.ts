@@ -14,7 +14,20 @@ export interface QueryResult {
   rowsAffected: number;
   message?: string;
 }
+// 확장성을 고려한 언어 코드 변환 함수
+// 나중에 언어가 추가되면 이 객체만 수정하면 됩니다.
+const LOCALE_MAP: Record<string, string> = {
+  'ko': 'ko-KR',
+  'en': 'en-US',
+  'zh': 'zh-CN', // (예시) 중국어 추가
+  'de': 'de-DE', // (예시) 독일어 추가
+  'ja': 'ja-JP', // (예시) 일본어 추가
+};
 
+// 매핑에 없는 언어가 들어오면 기본값(en-US)을 반환하도록 설정
+export const getDbLocale = (lang: string): string => {
+  return LOCALE_MAP[lang] || 'en-US';
+};
 class ApiService {
   private client: AxiosInstance;
 
@@ -83,12 +96,12 @@ class ApiService {
       // window.location.href = '/'; // 필요 시 주석 해제하여 로그인 페이지로 강제 이동
     }
   }
-    
+
   public async getConfigGuid(className: string, configName: string): Promise<string | null> {
     try {
       // TB_MNG_CONFIG 테이블에서 Class와 Name으로 GUID 조회
       const query = `SELECT TOP 1 GUID FROM TB_MNG_CONFIG WHERE Class = N'${className}' AND Name = N'${configName}'`;
-      
+
       const result = await this.executeQuery(query, AppConfig.DB.CONSOLE); // 설정용 DB
 
       if (result.success && result.data.length > 0) {
@@ -118,14 +131,14 @@ class ApiService {
     try {
       // 1. GUID 조회 (GetConfig)
       const guid = await this.getConfigGuid(className, configName);
-      
+
       if (!guid) {
         return { success: false, message: `Configuration GUID를 찾을 수 없습니다. (${className} / ${configName})` };
       }
 
       // 2. API 호출 URL 구성
       // global.version 등이 필요하다면 상수로 정의해서 사용
-      const url = `${API_BASE}/api/v1/MasterData/Import`; 
+      const url = `${API_BASE}/api/v1/MasterData/Import`;
 
       // 3. POST 데이터 구성 (C#의 JObject 부분)
       const payload = {
@@ -147,35 +160,35 @@ class ApiService {
   // --- 4. DB 쿼리 실행 (UserPage, ConfigPage 등에서 사용) ---
   public async executeQuery(query: string, dbName: string = AppConfig.DB.CONSOLE): Promise<QueryResult> {
     try {
-      const url = `${SERVER_URL}/api/execute`; 
-      
+      const url = `${SERVER_URL}/api/execute`;
+
       const res = await this.client.post(url, {
         dbName: dbName,
         query: query
       });
-    
+
 
       if (res.data && res.data.success) {
-        return { 
-          success: true, 
-          data: res.data.data || [], 
-          rowsAffected: res.data.rowsAffected 
+        return {
+          success: true,
+          data: res.data.data || [],
+          rowsAffected: res.data.rowsAffected
         };
       } else {
-        return { 
-          success: false, 
-          data: [], 
-          rowsAffected: 0, 
-          message: res.data?.message || "DB Error" 
+        return {
+          success: false,
+          data: [],
+          rowsAffected: 0,
+          message: res.data?.message || "DB Error"
         };
       }
     } catch (err: any) {
       console.error("Query Execution Error:", err);
-      return { 
-        success: false, 
-        data: [], 
-        rowsAffected: 0, 
-        message: "Server Communication Failed" 
+      return {
+        success: false,
+        data: [],
+        rowsAffected: 0,
+        message: "Server Communication Failed"
       };
     }
   }
