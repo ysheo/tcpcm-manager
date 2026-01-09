@@ -148,7 +148,7 @@ export const MaterialService = {
             LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
             ORDER BY s.UniqueKey ASC
         `;
-        console.log(rowQuery)
+        //console.log(rowQuery)
         // 병렬 실행
         const [cntRes, listRes] = await Promise.all([
             api.executeQuery(countQuery, AppConfig.DB.PCM),
