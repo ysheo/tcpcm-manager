@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    FiSearch, FiChevronDown,
+    FiSearch, FiChevronDown, FiX // ★ FiX 아이콘 추가
 } from 'react-icons/fi';
 
 // [인터페이스]
@@ -10,8 +10,6 @@ interface FilterOption {
     name: string;
 }
 
-
-// ★ [신규 컴포넌트] 검색 가능한 셀렉트 박스 (파일 하단에 두거나 내부에 정의)
 const SearchableSelect = ({
     options,
     value,
@@ -29,7 +27,7 @@ const SearchableSelect = ({
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // 1. 외부에서 value가 바뀌면(초기화 등) 검색어(표시명)도 업데이트
+    // 1. 외부 값 변경 감지
     useEffect(() => {
         const selected = options.find(o => o.uniqueKey === value);
         if (selected) {
@@ -39,12 +37,12 @@ const SearchableSelect = ({
         }
     }, [value, options, getLabel]);
 
-    // 2. 바깥 클릭 시 닫기
+    // 2. 바깥 클릭 감지
     useEffect(() => {
         const handleClickOutside = (event: any) => {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
                 setIsOpen(false);
-                // 닫힐 때, 유효한 값이 선택 안되어 있으면 입력창 초기화 (선택된 값의 이름으로 복구)
+                // 닫힐 때, 유효한 값이 선택 안 되어 있으면 입력창을 현재 선택된 값의 이름으로 복구
                 const selected = options.find(o => o.uniqueKey === value);
                 setSearchTerm(selected ? getLabel(selected) : '');
             }
@@ -53,45 +51,77 @@ const SearchableSelect = ({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [wrapperRef, value, options, getLabel]);
 
-    // 3. 검색어에 따른 필터링
+    // 3. 검색 필터링
     const filteredOptions = options.filter(opt =>
         getLabel(opt).toLowerCase().includes(searchTerm.toLowerCase()) ||
         opt.uniqueKey.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // ★ 초기화 핸들러
+    const handleClear = (e?: React.MouseEvent) => {
+        e?.stopPropagation(); // 드롭다운 열림 방지
+        onChange('');         // 부모에게 빈 값 전달
+        setSearchTerm('');    // 검색어 초기화
+        setIsOpen(false);     // 목록 닫기
+    };
 
     return (
         <div ref={wrapperRef} className="relative w-full">
             <div className="relative flex items-center">
                 <input
                     type="text"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 focus:border-teal-500 rounded-xl text-sm font-semibold text-teal-800 outline-none transition-all placeholder-gray-400"
+                    className="w-full pl-4 pr-10 py-3 bg-gray-50 border border-gray-200 focus:border-teal-500 rounded-xl text-sm font-semibold text-teal-800 outline-none transition-all placeholder-gray-400 cursor-pointer"
                     placeholder={placeholder}
                     value={searchTerm}
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
                         setIsOpen(true);
-                        if (e.target.value === '') onChange(''); // 지우면 선택 해제
+                        if (e.target.value === '') onChange('');
                     }}
+                    onClick={() => setIsOpen(true)} // 클릭 시 오픈
                     onFocus={() => {
                         setIsOpen(true);
-                        setSearchTerm(''); // 포커스 시 편하게 검색하라고 비워줌 (취향따라 제거 가능)
+                        // 포커스 시 검색 편의를 위해 텍스트 전체 선택 (선택 사항)
+                        // e.target.select(); 
                     }}
                 />
-                <div className="absolute right-4 text-teal-500 pointer-events-none">
-                    {isOpen ? <FiSearch /> : <FiChevronDown />}
+
+                {/* ★ 우측 아이콘 영역: 값이 있으면 X 버튼, 없으면 화살표/돋보기 */}
+                <div className="absolute right-3 flex items-center text-gray-400">
+                    {(value || searchTerm) ? (
+                        <button
+                            onClick={handleClear}
+                            className="p-1 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+                            title="Clear selection"
+                        >
+                            <FiX />
+                        </button>
+                    ) : (
+                        isOpen ? <FiSearch className="text-teal-500" /> : <FiChevronDown />
+                    )}
                 </div>
             </div>
 
             {/* 드롭다운 목록 */}
             {isOpen && (
                 <ul className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-lg animate-fadeIn thin-scrollbar">
+
+                    {/* ★ [추가됨] 기본 선택 해제 옵션 (항상 맨 위에 표시) */}
+                    <li
+                        onClick={() => handleClear()}
+                        className="px-4 py-3 text-sm cursor-pointer hover:bg-red-50 text-gray-500 hover:text-red-500 transition-colors border-b border-gray-50 flex items-center gap-2"
+                    >
+                        <FiX className="text-xs" />
+                        <span>- 전체 (선택 해제) -</span>
+                    </li>
+
                     {filteredOptions.length > 0 ? (
                         filteredOptions.map((opt) => (
                             <li
                                 key={opt.uniqueKey}
                                 onClick={() => {
-                                    onChange(opt.uniqueKey); // 부모에게 키값 전달
-                                    setSearchTerm(getLabel(opt)); // 화면엔 이름 표시
+                                    onChange(opt.uniqueKey);
+                                    setSearchTerm(getLabel(opt));
                                     setIsOpen(false);
                                 }}
                                 className={`px-4 py-2.5 text-sm cursor-pointer hover:bg-teal-50 transition-colors flex flex-col
@@ -103,13 +133,12 @@ const SearchableSelect = ({
                             </li>
                         ))
                     ) : (
-                        <li className="px-4 py-3 text-sm text-gray-400 text-center">No results found</li>
+                        <li className="px-4 py-3 text-sm text-gray-400 text-center">검색 결과가 없습니다.</li>
                     )}
                 </ul>
             )}
         </div>
     );
 };
-
 
 export default SearchableSelect;

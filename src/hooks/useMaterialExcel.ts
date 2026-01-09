@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { MaterialService } from '../services/MaterialService'; // 위에서 만든 Service
-import { AppConfig } from '../config/AppConfig';
+import { MaterialService, type MaterialFilters } from '../services/MaterialService'; // 위에서 만든 Service
 
 export const useMaterialExcel = (language: string) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -9,43 +8,23 @@ export const useMaterialExcel = (language: string) => {
     const [isSaving, setIsSaving] = useState(false);
     const [exportData, setExportData] = useState<any[]>([]);
 
-    const prepareData = async (filters: { text: string, classKey: string, includeRef: boolean, materialType: string }) => {
+    const prepareData = async (filters: MaterialFilters) => {
         setIsOpen(true);
         setIsPreparing(true);
         setExportData([]);
 
         try {
-            // WHERE 절 생성
-            let where = `WHERE s.Obsolete IS NULL`;
-            if (!filters.includeRef) where += ` AND s.ExternallyManaged = 0`;
-            if (filters.classKey) where += ` AND cls.UniqueKey = N'${filters.classKey}'`;
-            if (filters.text) where += ` AND (s.UniqueKey LIKE N'%${filters.text}%' OR std_n.Name_LOC LIKE N'%${filters.text}%')`;
+            const rowRes = await MaterialService.getExcelData(filters);
 
-            if (filters.materialType) {
-                where += `
-                    AND EXISTS (
-                        SELECT 1 
-                        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstancePropertyValues] pv
-                        WHERE pv.SubstanceId = s.Id 
-                          AND pv.ClassificationPropertyId = 28 
-                          AND pv.ListItemValues = N'${filters.materialType}'
-                    )
-                `;
-            }
-            // 데이터 조회
-            const rowRes = await MaterialService.getExcelData(where);
             if (!rowRes.success || rowRes.data.length === 0) throw new Error("No data");
 
             const rows = rowRes.data;
-
             // ---------------------------------------------------------------
             // ★ [단계 2] 물성 값(Value) 조회 (화면 로직과 동일!)
             // ---------------------------------------------------------------
             const ids = rows.map((r: any) => r.SubstanceId);
-
             // 아까 만든 getPropertyValues 호출 (규격 + 물성 모두 가져옴)
-            const valRes = await MaterialService.getPropertyValues(ids, language);
-
+            const valRes = await MaterialService.getPropertyValues(ids.join(','), language);
             // 값을 쉽게 찾기 위해 Map으로 변환: { "SubstanceId_PropertyId": "Value" }
             const valMap: Record<string, string> = {};
             const headerMap = new Map<string, string>(); // 헤더 이름 저장용 (KeyId -> DisplayName)
@@ -62,6 +41,7 @@ export const useMaterialExcel = (language: string) => {
                 });
             }
 
+            console.log(valRes); // 디버깅용 로그
             // ---------------------------------------------------------------
             // ★ [단계 3] 데이터 병합 (Rows + Values) -> 엑셀용 객체 생성
             // ---------------------------------------------------------------

@@ -27,9 +27,12 @@ const MaterialList_Property = () => {
     const [searchText, setSearchText] = useState('');
     const [filterClass, setFilterClass] = useState('');
     const [filterMaterialType, setFilterMaterialType] = useState('');
+    const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
     const [includeReference, setIncludeReference] = useState(false);
     const [classOptions, setClassOptions] = useState<FilterOption[]>([]);
     const [materialTypeOptions, setMaterialTypeOptions] = useState<FilterOption[]>([]);
+    const [allGroups, setAllGroups] = useState<any[]>([]);
+
     // 페이지네이션
     const [totalItems, setTotalItems] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
@@ -37,12 +40,33 @@ const MaterialList_Property = () => {
     const itemsPerPage = 15;
     const lastSearchRef = useRef('');
 
+    const filterParams = {
+        searchText,
+        classKey: filterClass,
+        groupKey: selectedGroups.length > 0 ? selectedGroups[selectedGroups.length - 1] : '',
+        materialType: filterMaterialType,
+        includeRef: includeReference
+    };
+
     // ★ 엑셀 Hook 사용 (한 줄로 기능 연결!)
     const excel = useMaterialExcel(language);
 
     // 1. 초기 로드 (Service 사용)
     useEffect(() => {
         const fetchOptions = async () => {
+
+            // ★ (1) 신규 필터 옵션 로드 (ID 17 하위 Leaf)
+            const resGroup = await MaterialService.getMaterialGroupTree(language);
+            if (resGroup.success) {
+                // 나중에 필터링하기 쉽게 데이터 저장
+                setAllGroups(resGroup.data.map((i: any) => ({
+                    id: i.Id,
+                    parentId: i.ParentId, // 부모 ID 중요!
+                    uniqueKey: i.UniqueKey,
+                    name: i.Name
+                })));
+            }
+
             const res2 = await MaterialService.getMaterialType(language);
             if (res2.success) {
                 setMaterialTypeOptions(res2.data.map((i: any) => ({
@@ -56,8 +80,6 @@ const MaterialList_Property = () => {
                     id: i.Id, uniqueKey: i.UniqueKey, name: i.Name
                 })));
             }
-
-
         };
         fetchOptions();
     }, [language]);
@@ -70,7 +92,7 @@ const MaterialList_Property = () => {
 
     // 엑셀 버튼 핸들러
     const handleExcelClick = () => {
-        excel.prepareData({ text: searchText, classKey: filterClass, includeRef: includeReference, materialType: filterMaterialType });
+        excel.prepareData(filterParams);
     };
 
     const handlePageInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -89,86 +111,18 @@ const MaterialList_Property = () => {
         console.time("🚀 Load Prop Data");
 
         try {
-            const currentSearchKey = `PROP-${searchText}-${filterClass}-${filterMaterialType}-${includeReference}`;
+            const { total, data: rows } = await MaterialService.getList(page, itemsPerPage, filterParams);
 
-            // --- 1. 기본 WHERE 조건 ---
-            let baseWhere = `WHERE s.Obsolete IS NULL`;
-            if (!includeReference) baseWhere += ` AND s.ExternallyManaged = 0`;
-            if (filterClass) baseWhere += ` AND cls.UniqueKey = N'${filterClass}'`;
-            if (searchText) {
-                baseWhere += ` AND (s.UniqueKey LIKE N'%${searchText}%' OR std_n.Name_LOC LIKE N'%${searchText}%')`;
-            }
+            setTotalItems(total);
 
-            if (filterMaterialType) {
-                baseWhere += `
-                    AND EXISTS (
-                        SELECT 1 
-                        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstancePropertyValues] pv
-                        WHERE pv.SubstanceId = s.Id 
-                          AND pv.ClassificationPropertyId = 28 
-                          AND pv.ListItemValues = N'${filterMaterialType}'
-                    )
-                `;
-            }
-
-            // --- 2. 카운트 쿼리 (기존과 동일) ---
-            if (lastSearchRef.current !== currentSearchKey) {
-                const countQuery = `
-                        -- ★ [수정] COUNT(*) 대신 COUNT(DISTINCT s.Id) 사용
-                        -- 조인 때문에 늘어난 줄 수(규격 이름 개수)를 무시하고, 실제 재료 개수만 셉니다.
-                        SELECT COUNT(DISTINCT s.Id) as total
-                        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
-                        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-                        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
-                        ${baseWhere}
-                    `;
-                const res = await api.executeQuery(countQuery, AppConfig.DB.PCM);
-                if (res.success) {
-                    setTotalItems(res.data[0].total);
-                    lastSearchRef.current = currentSearchKey;
-                }
-            }
-
-            // --- 3. 물질 목록(Row) 조회 ---
-            const rowQuery = `
-    WITH PagedRows AS (
-        SELECT s.Id
-        FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
-        LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-        ${baseWhere}
-        ORDER BY s.UniqueKey ASC
-        OFFSET ${(page - 1) * itemsPerPage} ROWS FETCH NEXT ${itemsPerPage} ROWS ONLY
-    )
-    SELECT 
-    distinct
-        s.Id AS SubstanceId
-        ,s.UniqueKey
-        ,s.Density
-        ,u.Name AS DensityUnit       
-
-    FROM PagedRows p
-    JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s ON p.Id = s.Id
-    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
-    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Units] u ON s.DensityUnitId = u.Id
-    LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
-    ORDER BY s.UniqueKey ASC
-`;
-            console.log(rowQuery);
-            const rowRes = await api.executeQuery(rowQuery, AppConfig.DB.PCM);
-
-            if (rowRes.success && rowRes.data.length > 0) {
-                const rows = rowRes.data;
+            if (rows.length > 0) {
                 setData(rows);
 
                 // --- 4. 값(Value) + 헤더 정보(Meta) 동시 조회 ---
                 const ids = rows.map((r: any) => `'${r.SubstanceId}'`).join(',');
 
-
-
                 if (ids) {
                     // 값을 가져올 때 [물성 이름]과 [단위]도 같이 JOIN해서 가져옵니다.
-
-                    //console.log(valueQuery);
                     const valRes = await MaterialService.getPropertyValues(ids, language);
                     if (valRes.success) {
                         const valMap: Record<string, any> = {};
@@ -224,47 +178,132 @@ const MaterialList_Property = () => {
             console.timeEnd("🚀 Load Prop Data");
         }
     };
+    const renderGroupFilters = () => {
+        // 1. 레벨별 드롭다운을 담을 배열
+        const dropdowns = [];
+
+        // 2. 루트(ID 17)의 직계 자식들 찾기 (ParentId가 17인 애들)
+        // ※ 주의: DB에서 17번 ID를 정확히 알아야 함. 혹은 최상위 부모를 찾는 로직 필요.
+        // 여기서는 편의상 "ParentId가 17"이라고 가정하거나, 
+        // 데이터 중 ParentId가 17인 데이터를 '첫 번째 레벨'로 봅니다.
+        let currentLevelOptions = allGroups.filter(g => g.parentId === 17);
+
+        // 3. 루프를 돌면서 드롭다운 생성
+        // (선택된 개수 + 1)만큼 드롭다운을 보여줍니다. (마지막 선택의 자식들을 보여주기 위해)
+        for (let i = 0; i <= selectedGroups.length; i++) {
+
+            // 더 이상 보여줄 하위 옵션이 없으면 종료
+            if (currentLevelOptions.length === 0) break;
+
+            const currentVal = selectedGroups[i] || ''; // 현재 레벨의 선택값
+
+            dropdowns.push(
+                <div key={i} className="flex flex-col gap-1 min-w-[150px]">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">
+                        {i === 0 ? "Material Group" : `Sub Group ${i}`}
+                    </span>
+                    <SearchableSelect
+                        options={currentLevelOptions}
+                        value={currentVal}
+                        onChange={(newVal) => handleGroupChange(i, newVal)}
+                        getLabel={(opt) => opt.name}
+                        placeholder={i === 0 ? "Select Group..." : "Select Sub..."}
+                    />
+                </div>
+            );
+
+            // 다음 레벨을 위해 옵션 갱신
+            // 현재 선택된 값(UniqueKey)을 가진 항목의 ID를 찾아서, 그 ID를 부모로 가진 애들을 찾음
+            if (currentVal) {
+                const selectedItem = allGroups.find(g => g.uniqueKey === currentVal);
+                if (selectedItem) {
+                    currentLevelOptions = allGroups.filter(g => g.parentId === selectedItem.id);
+                } else {
+                    currentLevelOptions = [];
+                }
+            } else {
+                // 선택 안 했으면 다음 레벨 없음
+                currentLevelOptions = [];
+            }
+        }
+
+        return dropdowns;
+    };
+
+    // 그룹 변경 핸들러
+    const handleGroupChange = (level: number, newVal: string) => {
+        const newGroups = [...selectedGroups];
+
+        if (newVal) {
+            // 해당 레벨 값을 변경하고, 그 뒤에 있던 하위 선택들은 다 날림 (다시 선택해야 하니까)
+            newGroups[level] = newVal;
+            newGroups.splice(level + 1);
+        } else {
+            // 선택 취소하면 해당 레벨부터 싹 날림
+            newGroups.splice(level);
+        }
+
+        setSelectedGroups(newGroups);
+    };
 
     return (
         <>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
-                    {/* Select Box (공통 컴포넌트 사용) */}
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Material Type</span>
-                        <SearchableSelect
-                            options={materialTypeOptions}
-                            value={filterMaterialType}
-                            onChange={setFilterMaterialType}
-                            getLabel={(opt) => opt.name}
-                            placeholder="Type to search..."
-                        />
+                <div className="flex flex-col gap-4">
+
+                    {/* ★ [1행] 동적 그룹 필터 영역 */}
+                    {/* 그룹이 선택될 때마다 옆으로 늘어나며, 공간 부족하면 다음 줄로 넘어감 */}
+                    <div className="flex flex-wrap gap-4 items-end border-b border-gray-100 pb-4">
+                        {renderGroupFilters()}
+
+                        {/* 그룹 선택이 하나도 없을 때 안내 문구 (선택사항) */}
+                        {selectedGroups.length === 0 && (
+                            <span className="text-xs text-gray-400 py-3">
+                                Please select a material group to proceed.
+                            </span>
+                        )}
                     </div>
 
-                    <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Classification</span>
-                        <SearchableSelect
-                            options={classOptions}
-                            value={filterClass}
-                            onChange={setFilterClass}
-                            getLabel={(opt) => opt.name}
-                            placeholder="Type to search..."
-                        />
-                    </div>
+                    {/* ★ [2행] 나머지 고정 필터 영역 (Grid 사용 추천) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                    {/* Search Input */}
-                    <div className="flex flex-col gap-1">
-                        <div className="flex justify-between items-center px-1">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t("mat_label_smart_search")}</span>
-                            <label className="text-[10px] font-bold text-teal-600 cursor-pointer flex items-center gap-1">
-                                <input type="checkbox" checked={includeReference} onChange={e => setIncludeReference(e.target.checked)} className="rounded-sm accent-teal-600" />
-                                {t("mat_label_include_siemens")}
-                            </label>
+                        {/* Select Box (공통 컴포넌트 사용) */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Material Type</span>
+                            <SearchableSelect
+                                options={materialTypeOptions}
+                                value={filterMaterialType}
+                                onChange={setFilterMaterialType}
+                                getLabel={(opt) => opt.name}
+                                placeholder="Type to search..."
+                            />
                         </div>
-                        <div className="relative flex items-center">
-                            <FiSearch className="absolute left-3.5 text-gray-400" />
-                            <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Key or Standard Name..." className="w-full pl-11 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" />
-                            <button onClick={() => fetchData(1)} className="absolute right-2 p-2 text-gray-400 hover:text-teal-600"><FiRefreshCw className={loading ? "animate-spin" : ""} /></button>
+
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1">Classification</span>
+                            <SearchableSelect
+                                options={classOptions}
+                                value={filterClass}
+                                onChange={setFilterClass}
+                                getLabel={(opt) => opt.name}
+                                placeholder="Type to search..."
+                            />
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="flex flex-col gap-1">
+                            <div className="flex justify-between items-center px-1">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t("mat_label_smart_search")}</span>
+                                <label className="text-[10px] font-bold text-teal-600 cursor-pointer flex items-center gap-1">
+                                    <input type="checkbox" checked={includeReference} onChange={e => setIncludeReference(e.target.checked)} className="rounded-sm accent-teal-600" />
+                                    {t("mat_label_include_siemens")}
+                                </label>
+                            </div>
+                            <div className="relative flex items-center">
+                                <FiSearch className="absolute left-3.5 text-gray-400" />
+                                <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="Key or Standard Name..." className="w-full pl-11 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" />
+                                <button onClick={() => fetchData(1)} className="absolute right-2 p-2 text-gray-400 hover:text-teal-600"><FiRefreshCw className={loading ? "animate-spin" : ""} /></button>
+                            </div>
                         </div>
                     </div>
                 </div>
