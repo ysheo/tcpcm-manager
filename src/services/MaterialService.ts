@@ -90,7 +90,7 @@ export const MaterialService = {
 
         // 4. 검색어 (Search Text)
         if (filters.searchText) {
-            where += ` AND (s.UniqueKey LIKE N'%${filters.searchText}%' OR std_n.Name_LOC LIKE N'%${filters.searchText}%')`;
+            where += ` AND (s.UniqueKey LIKE N'%${filters.searchText}%' OR CAST(std_n.Name_LOC AS NVARCHAR(MAX)) LIKE N'%${filters.searchText}%')`;
         }
 
         // 5. 재료 타입 (Material Type - EXISTS 구문)
@@ -132,10 +132,11 @@ export const MaterialService = {
 
         // 4. 목록 조회 쿼리
         const rowQuery = `
-            ${withClause} -- ★ 여기서 동적으로 WITH 구문 시작
-                SELECT s.Id
+            ${withClause} 
+                SELECT DISTINCT s.Id, s.UniqueKey -- ★ [수정] DISTINCT 사용 시 ORDER BY 대상(UniqueKey)이 여기 포함되어야 함
                 FROM [${AppConfig.DB.PCM}].[dbo].[MDSubstances] s
                 LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[Classifications] cls ON s.ClassId = cls.Id
+                LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
                 ${where}
                 ORDER BY s.UniqueKey ASC
                 OFFSET ${(page - 1) * itemsPerPage} ROWS FETCH NEXT ${itemsPerPage} ROWS ONLY
@@ -148,7 +149,6 @@ export const MaterialService = {
             LEFT JOIN [${AppConfig.DB.PCM}].[dbo].[MDSubstanceStandardNames] std_n ON s.Id = std_n.SubstanceId
             ORDER BY s.UniqueKey ASC
         `;
-        //console.log(rowQuery)
         // 병렬 실행
         const [cntRes, listRes] = await Promise.all([
             api.executeQuery(countQuery, AppConfig.DB.PCM),

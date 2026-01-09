@@ -7,6 +7,7 @@ import EmptyPage from '../pages/EmptyPage';
 import CostPageV1 from '../pages/CostPageV1';
 import CostPageV2 from '../pages/CostPageV2';
 import MaterialPage from '../pages/MaterialPage';
+import MachinePage from '../pages/MachineList';
 import type { TabType } from '../App';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -22,20 +23,20 @@ const MainScreen = ({ activeTab, user }: MainScreenProps) => {
     switch (activeTab) {
       case 'home':
         return <DashboardPage user={user} />;
-      
+
       // Cost Analytics
       case 'cost-v1':
         return <CostPageV1 />;
       case 'cost-v2':
         return <CostPageV2 />;
-      
+
       // Master Data
       case 'plant':
         return <PlantRegionPage />;
       case 'material':
         return <MaterialPage />;
       case 'machine':
-        return <EmptyPage title={t('menu_machine')} />;
+        return <MachinePage />;
       case 'labor':
         return <EmptyPage title={t('menu_labor')} />;
       case 'overheads':
@@ -44,13 +45,13 @@ const MainScreen = ({ activeTab, user }: MainScreenProps) => {
         return <EmptyPage title={t('menu_factor')} />;
       case 'exchange':
         return <EmptyPage title={t('menu_exchange')} />;
-      
+
       // System Settings
       case 'users':
         return <UserPage />;
       case 'config':
         return <ConfigPage />;
-        
+
       default:
         return <DashboardPage user={user} />;
     }

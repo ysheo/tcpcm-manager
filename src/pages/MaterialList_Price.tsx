@@ -5,6 +5,8 @@ import { MaterialPriceService } from '../services/MaterialPriceService'; // ★ 
 import { useMaterialPriceExcel } from '../hooks/useMaterialPriceExcel'; // ★ Hook import
 import ExcelPreviewModal from '../components/common/ExcelPreviewModal'; // ★ 공통 컴포넌트
 import SearchableSelect from '../components/common/SearchableSelect';   // ★ 공통 컴포넌트
+import SmartSearchInput from '../components/common/SmartSearchInput';
+import Pagination from '../components/common/Pagination'; // 임포트
 
 interface FilterOption {
     id?: string;
@@ -36,7 +38,6 @@ const MaterialList_Price = () => {
     const [totalItems, setTotalItems] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 15;
-    const [pageInput, setPageInput] = useState('1');
 
     // ★ 엑셀 Hook 사용
     const excel = useMaterialPriceExcel(language);
@@ -60,6 +61,24 @@ const MaterialList_Price = () => {
         fetchOptions();
     }, [language]);
 
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchData(currentPage);
+        }, 300);
+
+        return () => clearTimeout(timer);
+
+    }, [
+        filterClass,        // 분류 변경 시 실행
+        filterRegion,
+        isAllPeriod,
+        startDate,
+        endDate,
+        includeReference,    // 지멘스 포함 여부 변경 시 실행
+        currentPage,        // 페이지 번호가 바뀔 때만 실행 (기존 유지)
+    ]);
+
     // 2. 데이터 조회
     const fetchData = async (page: number) => {
         setLoading(true);
@@ -80,13 +99,6 @@ const MaterialList_Price = () => {
             setLoading(false);
         }
     };
-
-    // 필터 변경 시 자동 조회 (Debounce)
-    useEffect(() => {
-        const timer = setTimeout(() => fetchData(currentPage), 300);
-        setPageInput(currentPage.toString());
-        return () => clearTimeout(timer);
-    }, [currentPage, searchText, filterRegion, filterClass, isAllPeriod, startDate, endDate, includeReference]);
 
     // 엑셀 버튼 핸들러
     const handleExcelClick = () => {
@@ -145,21 +157,29 @@ const MaterialList_Price = () => {
                             placeholder="Search class..."
                         />
                     </div>
-
-                    {/* Smart Search */}
+                    {/* Smart Search (Price) */}
                     <div className="flex flex-col gap-1">
-                        <div className="flex justify-between items-center px-1">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{t("mat_label_smart_search")}</span>
-                            <label className="text-[10px] font-bold text-teal-600 cursor-pointer flex items-center gap-1">
-                                <input type="checkbox" checked={includeReference} onChange={e => setIncludeReference(e.target.checked)} className="rounded-sm accent-teal-600" />
-                                {t("mat_label_include_siemens")}
-                            </label>
-                        </div>
-                        <div className="relative flex items-center">
-                            <FiSearch className="absolute left-3.5 text-gray-400" />
-                            <input type="text" value={searchText} onChange={e => setSearchText(e.target.value)} placeholder="XML & Key Search..." className="w-full pl-11 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" />
-                            <button onClick={() => fetchData(currentPage)} className="absolute right-2 p-2 text-gray-400 hover:text-teal-600"><FiRefreshCw className={loading ? "animate-spin" : ""} /></button>
-                        </div>
+                        <SmartSearchInput
+                            // 1. 기본 설정
+                            label={t("mat_label_smart_search")}
+                            value={searchText}
+                            onChange={setSearchText}
+                            onRefresh={() => {
+                                if (currentPage === 1) {
+                                    fetchData(1); // 이미 1페이지면 강제 조회
+                                } else {
+                                    setCurrentPage(1); // 아니면 1페이지로 이동 (-> useEffect가 조회함)
+                                }
+                            }}
+                            loading={loading}
+                            placeholder="XML & Key Search..."
+
+                            // 2. 옵션(지멘스 포함) 활성화
+                            showOption={true}
+                            optionLabel={t("mat_label_include_siemens")}
+                            optionChecked={includeReference}
+                            onOptionChange={setIncludeReference}
+                        />
                     </div>
                 </div>
             </div>
@@ -218,15 +238,13 @@ const MaterialList_Price = () => {
                     </table>
                 </div>
 
-                {/* Pagination */}
-                <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
-                    <div className="text-xs text-gray-500">Total <span className="font-bold text-teal-600">{totalItems.toLocaleString()}</span> items</div>
-                    <div className="flex items-center space-x-1">
-                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 disabled:opacity-30"><FiChevronLeft /></button>
-                        <span className="text-sm text-gray-600 px-2">{currentPage} / {Math.ceil(totalItems / itemsPerPage) || 1}</span>
-                        <button onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= Math.ceil(totalItems / itemsPerPage)} className="p-2 rounded-lg hover:bg-gray-200 text-gray-500 disabled:opacity-30"><FiChevronRight /></button>
-                    </div>
-                </div>
+                {/* 페이지네이션 */}
+                <Pagination
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                />
             </div >
 
             {/* 모달 (공통 컴포넌트 재사용) */}
